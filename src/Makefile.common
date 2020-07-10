@@ -1,0 +1,79 @@
+# -*-Makefile-*-
+
+all::
+
+BUILD_DIR	?= _build
+SRC_DIR		?= .
+SRC_DIRS	?= $(shell find $(SRC_DIR) -type d | xargs -I {} bash -c "test -f {}/.ignore || echo {}")
+
+SRCS_h		?= $(shell find $(SRC_DIRS) -maxdepth 1 -name '*.h' | $(SED) -r 's/^(\.\/)?//')
+SRCS_c		?= $(shell find $(SRC_DIRS) -maxdepth 1 -name '*.c' | $(SED) -r 's/^(\.\/)?//')
+
+SRCS_hpp	?= $(shell find $(SRC_DIRS) -maxdepth 1 -name '*.hpp' | $(SED) -r 's/^(\.\/)?//')
+SRCS_cpp	?= $(shell find $(SRC_DIRS) -maxdepth 1 -name '*.cpp' | $(SED) -r 's/^(\.\/)?//')
+
+OBJS		?= $(SRCS_c:%.c=$(BUILD_DIR)/%.o) $(SRCS_cpp:%.cpp=$(BUILD_DIR)/%.o)
+
+CC		?= gcc
+CFLAGS		?=
+
+CPP		?= g++
+CPPFLAGS	?=
+
+INC_DIRS	?= $(shell find $(SRC_DIRS) -type d)
+INC_FLAGS	?= $(addprefix -I$(BUILD_DIR)/,$(INC_DIRS))
+
+SED		?= sed
+AWK		?= awk
+
+MKDIR_P		?= mkdir -p
+
+.PRECIOUS:	%.o
+
+$(BUILD_DIR)/%.o: %.c
+	$(MKDIR_P) $(dir $@)
+	$(CC) $(CFLAGS) $(INC_FLAGS) -c -o $@ $<
+
+$(BUILD_DIR)/%.o: %.cpp
+	$(MKDIR_P) $(dir $@)
+	$(CPP) $(CPPFLAGS) $(INC_FLAGS) -c -o $@ $<
+
+# --------------------------------------------------------------------------------
+
+all::	$(OBJS)
+install::
+clean::
+#	find . -name '*~' -or -name '*.o' | xargs rm -f
+#	rm -f $(OBJS)
+veryclean::	clean
+	rm -rf $(BUILD_DIR)
+
+# --------------------------------------------------------------------------------
+Makefile.depend:	Makefile.depend_c Makefile.depend_cpp
+	@rm -f $@ && touch $@
+	@echo "# SRC_DIRS = $(SRC_DIRS)" >> $@
+	cat $^ >> $@
+	@echo >> $@
+	@echo "# generated at: `date +%Y-%m-%dT%H:%M:%S%z`" >> $@
+
+.INTERMEDIATE:	Makefile.depend_c Makefile.depend_cpp
+
+Makefile.depend_c:	$(SRCS_h) $(SRCS_c)
+	$(CC) -I. -MM $^ 2> /dev/null |\
+	while read LINE; do \
+	echo $$LINE | $(SED) -r 's/:/ : /g' |\
+	$(AWK) -v dir=$(BUILD_DIR) 'BEGIN{FS="[ \t:]+"}/^[^:]/{printf("%s/%s ",dir,gensub(/^(\.\/)?(.*)/,"\\2","1",$$0));next}{printf("%s ",$$0)}END{printf("\n")}';\
+	done >> $@
+
+Makefile.depend_cpp:	$(SRCS_hpp) $(SRCS_cpp)
+	$(CPP) -I. -MM $^ 2> /dev/null |\
+	while read LINE; do \
+	echo $$LINE | $(SED) -r 's/:/ : /g' |\
+	$(AWK) -v dir=$(BUILD_DIR) 'BEGIN{FS="[ \t:]+"}/^[^:]/{printf("%s/%s ",dir,gensub(/^(\.\/)?(.*)/,"\\2","1",$$0));next}{printf("%s ",$$0)}END{printf("\n")}';\
+	done >> $@
+
+all::	Makefile.depend
+veryclean::
+	rm -f Makefile.depend
+
+-include Makefile.depend
